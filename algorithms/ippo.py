@@ -256,6 +256,7 @@ class iPPO:
                            gamma=gamma,
                            policy_lr=policy_lr,
                            value_lr=value_lr,
+                           device=self.device,
                            early_stopping=early_stopping) for k in range(self.n_agents)]
         
     def create_rollouts(self, num_episodes=4):
