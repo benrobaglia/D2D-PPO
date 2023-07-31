@@ -195,37 +195,6 @@ class PPO:
         return policy_loss.item(), value_loss.item()
 
 
-def train_ppo(env, agents, num_iter, num_episodes=4):
-    scores_episode = []
-    score_test_list = []
-    
-    for iter in range(num_iter):
-        states, actions, log_probs_old, returns, _, advantages, scores, _ = create_rollouts(env, agents, num_episodes)
-
-        # Shape: (len_trajectory * num agents)
-        scores_episode += scores
-
-        if states.sum() > 0:
-            for i in range(env.n):
-                loss = agents[i].train_step(states[:, i, :], actions[:,i], log_probs_old[:, i], returns[:,i], advantages[:, i])
-        
-        if iter % 100 == 0:
-            score_test = test_ppo(env, agents, 100)
-            score_test_list.append(score_test)
-            if (score_test == 1) & (agents[0].early_stopping == True):
-                break
-            print(f"Episode: {iter}, mean score rollout: {np.mean(scores)} Score test: {score_test}")
-
-
-#                 print(loss)
-#             print(states)
-#             print(actions)
-#             print(rewards)
-#             print("\n")
-            
-                
-    return scores_episode, score_test_list
-
 	
 
 class iPPO:

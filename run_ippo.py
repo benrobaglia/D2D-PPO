@@ -6,7 +6,7 @@ from algorithms.ippo import iPPO
 
 print("Device: ", torch.device('cuda' if torch.cuda.is_available() else "cpu"))
 
-n_seeds = 5
+n_seeds = 1
 n_agents_list = [2, 4, 6, 8, 10]
 
 ippo_scores_list = []
@@ -28,7 +28,9 @@ for seed in range(n_seeds):
         period = None
         arrival_probs = None
         offsets = None
-        neighbourhoods = [list(range(k)) for i in range(k)] # neighbourhoods full obs
+        # neighbourhoods = [list(range(k)) for i in range(k)] # neighbourhoods full obs
+        neighbourhoods = [[i] for i in range(k)]
+        print(f"Neighbourhoods: {neighbourhoods}")
 
         env = D2DEnv(k,
                     deadlines,
@@ -46,7 +48,7 @@ for seed in range(n_seeds):
                     verbose=False)
         
         ippo = iPPO(env)
-        res = ippo.train(num_iter=5000, num_episodes=15, test_freq=500)    
+        res = ippo.train(num_iter=5000, num_episodes=10, test_freq=500)    
         score_ippo, jains_ippo, channel_error_ippo, rewards_ippo = ippo.test(500)
 
         print(f"URLLC score iPPO: {score_ippo}")
@@ -70,4 +72,4 @@ ippo_result = {"ippo_scores": ippo_scores_list, "ippo_jains": ippo_jains_list, "
                        }
 
 
-pickle.dump(ippo_result, open('results/ippo_full_obs.p', 'wb'))
+pickle.dump(ippo_result, open('results/ippo_partial_obs.p', 'wb'))
