@@ -405,7 +405,7 @@ class iPPO:
             if idx < self.history_len:
                 x = obs_agent[i-idx:i+1]
                 pad_len = self.history_len - (idx + 1)
-                x = torch.cat([torch.zeros((pad_len, obs_agent.size(1))), x]) # We pad with 0s.
+                x = torch.cat([torch.zeros((pad_len, obs_agent.size(1))).to(self.device), x]) # We pad with 0s.
             else:
                 x = obs_agent[i+1-self.history_len:i+1]
             obs_agent_rnn.append(x)
