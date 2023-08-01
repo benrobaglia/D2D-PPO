@@ -47,7 +47,7 @@ for seed in range(n_seeds):
                     neighbourhoods=neighbourhoods, # Neighbourhoods is a list of size n_agents with the indices of the neighbours for each agent.
                     verbose=False)
         
-        ippo = iPPO(env)
+        ippo = iPPO(env, useRNN=True, history_len=k)
         res = ippo.train(num_iter=5000, num_episodes=10, test_freq=500)    
         score_ippo, jains_ippo, channel_error_ippo, rewards_ippo = ippo.test(500)
 
@@ -72,4 +72,4 @@ ippo_result = {"ippo_scores": ippo_scores_list, "ippo_jains": ippo_jains_list, "
                        }
 
 
-pickle.dump(ippo_result, open('results/ippo_partial_obs.p', 'wb'))
+pickle.dump(ippo_result, open('results/ippo_partial_obs_rnn.p', 'wb'))

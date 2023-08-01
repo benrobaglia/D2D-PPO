@@ -11,6 +11,43 @@ def init_weights(m, gain):
         if m.bias is not None:
             nn.init.zeros_(m.bias)
 
+
+class RNN(torch.nn.Module):
+    def __init__(self, n_inputs, n_outputs, hidden_size=100, use_softmax=False, **kwargs):
+
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.use_softmax = use_softmax
+        self.lstm = nn.GRU(n_inputs, hidden_size, 1)
+        layers = []
+        # layers.append(nn.Linear(hidden_size, hidden_size))
+        # layers.append(nn.ReLU())
+        layers.append(nn.Linear(hidden_size, hidden_size))
+        layers.append(nn.ReLU())
+
+        layers.append(nn.Linear(hidden_size, n_outputs))
+        
+        self.layers = nn.Sequential(*layers)
+        self.layers.apply(lambda x: init_weights(x, 3))
+    
+    def init_hidden(self, batch_size):
+        return (torch.zeros(1, batch_size, self.hidden_size),
+                torch.zeros(1, batch_size, self.hidden_size))
+
+    def forward(self, obs):
+        if len(obs.shape) == 2:
+            obs = obs.unsqueeze(0) # Add batch dimension
+            
+        batch_size = obs.size(0)
+        self.hidden = self.init_hidden(batch_size=batch_size)
+        lstm_out, self.hidden = self.lstm(obs.permute(1, 0, 2))
+        out = lstm_out[-1]
+        out = self.layers(out)
+        if self.use_softmax:
+            out = F.softmax(out, dim=1)
+        return out
+
+
 class Policy(nn.Module):
     def __init__(self, num_inputs, n_actions, hidden_size=100):
         super(Policy, self).__init__()
@@ -135,12 +172,31 @@ def create_rollouts(env, agents, num_episodes=4):
     return torch.stack(states), np.array(actions), log_probs, returns, values, advantages, scores, dones
 
 class PPO:
-    def __init__(self, num_inputs, n_actions, hidden_size=128, gamma=0.99, policy_lr=1e-3, value_lr=1e-3, device='cpu', early_stopping=True):
+    def __init__(self,
+                num_inputs,
+                n_actions, 
+                hidden_size=128, 
+                gamma=0.99, 
+                policy_lr=1e-3, 
+                value_lr=1e-3, 
+                useRNN=False,
+                device='cpu', 
+                history_len = 5,
+                early_stopping=True):
+        
+        self.history_len = history_len
+        self.useRNN = useRNN
         self.early_stopping = early_stopping
         self.device = torch.device(device)
         self.n_actions = n_actions
-        self.policy_network = Policy(num_inputs, n_actions, hidden_size)
-        self.value_network = Value(num_inputs, hidden_size)
+
+        if not self.useRNN:
+            self.policy_network = Policy(num_inputs, n_actions, hidden_size)
+            self.value_network = Value(num_inputs, hidden_size)
+        else:
+            self.policy_network = RNN(num_inputs, n_actions, hidden_size, use_softmax=True)
+            self.value_network = RNN(num_inputs, 1, hidden_size, use_softmax=False)
+
         self.gamma = gamma
         self.policy_network = self.policy_network.to(self.device)
         self.value_network = self.value_network.to(self.device)
@@ -205,15 +261,20 @@ class iPPO:
                 policy_lr=1e-3,
                 value_lr=1e-3,
                 device=None,
+                useRNN=False,
+                history_len=10,
                 early_stopping=True):
         
         self.env = env
+        self.history_len = history_len
         self.n_agents = env.n_agents
         self.hidden_size = hidden_size
         self.gamma = gamma
         self.policy_lr=policy_lr, 
         self.value_lr=value_lr,
         self.early_stopping = early_stopping
+        self.useRNN = useRNN
+        
         if device is None:
             self.device = torch.device('cuda' if torch.cuda.is_available() else "cpu")
         else:
@@ -225,6 +286,8 @@ class iPPO:
                            gamma=gamma,
                            policy_lr=policy_lr,
                            value_lr=value_lr,
+                           useRNN=useRNN,
+                           history_len=history_len,
                            device=self.device,
                            early_stopping=early_stopping) for k in range(self.n_agents)]
         
@@ -241,7 +304,7 @@ class iPPO:
         values = []
         dones = []
         
-        for _ in range(num_episodes):
+        for e in range(num_episodes):
             done = False
             rewards_episode = []
             obs, (buffer_state, channel_state) = self.env.reset()
@@ -255,11 +318,17 @@ class iPPO:
                 for i, agent in enumerate(self.agents):
                     obs_agent = torch.tensor(obs[i], dtype=torch.float).to(self.device)
                     observations[str(i)].append(obs_agent)
-                    action, log_prob, entropy = agent.select_action(obs_agent, train=True)
+                    if self.useRNN:
+                        history_tensor = torch.stack(observations[str(i)][e*self.env.episode_length:][-self.history_len:]) # shape: (history_len, input_len)
+                        action, log_prob, entropy = agent.select_action(history_tensor, train=True)
+                        value = agent.value_network(history_tensor).item()
+                    else:
+                        action, log_prob, entropy = agent.select_action(obs_agent, train=True)
+                        value = agent.value_network(obs_agent).item()
+
                     action_agent.append(action)
                     log_prob_agent.append(log_prob)
                     # entropy_agent.appent(entropy)
-                    value = agent.value_network(obs_agent).item()
                     value_agent.append(value)
                 
                 next_obs, next_state, reward, done, _ = self.env.step(np.array(action_agent))
@@ -294,8 +363,9 @@ class iPPO:
         number_of_discarded = []
         jains_index = []
         number_channel_losses = []
+        observations = {f"{i}": [] for i in range(self.n_agents)}
 
-        for i_episode in range(num_episodes):
+        for e in range(num_episodes):
             running_rewards = []
             obs, _ = self.env.reset()
             done = False
@@ -303,7 +373,14 @@ class iPPO:
                 actions = []
                 for i, agent in enumerate(self.agents):
                     obs_agent = torch.tensor(obs[i], dtype=torch.float).to(self.device)
-                    action, _, _ = agent.select_action(obs_agent, train=True)
+                    observations[str(i)].append(obs_agent)
+
+                    if self.useRNN:
+                        history_tensor = torch.stack(observations[str(i)][e*self.env.episode_length:][-self.history_len:])
+                        action, _, _ = agent.select_action(history_tensor, train=False)
+                    else:
+                        action, _, _ = agent.select_action(obs_agent, train=False)
+
                     actions.append(action)
 
                 next_obs, _, reward, done, _ = self.env.step(actions)
@@ -316,13 +393,31 @@ class iPPO:
             jains_index.append(self.env.compute_jains())
             number_channel_losses.append(self.env.channel_errors)
             scores_episode.append(1-self.env.discarded_packets.sum() / self.env.received_packets.sum())
-                    
+        
         return np.mean(scores_episode), np.mean(jains_index), np.sum(number_channel_losses), np.mean(average_rewards)
+
+    def preprocess_input_for_rnn(self, obs_agent):
+        # obs_agent is the tensor of size (num_episodes * episode_length, input_size)
+        # obs_agent_rnn is a tensor of size (num_episodes * episode_length, history_len, input_size)
+        obs_agent_rnn = []
+        for i in range(obs_agent.size(0)):
+            idx = i % self.env.episode_length
+            if idx < self.history_len:
+                x = obs_agent[i-idx:i+1]
+                pad_len = self.history_len - (idx + 1)
+                x = torch.cat([torch.zeros((pad_len, obs_agent.size(1))), x]) # We pad with 0s.
+            else:
+                x = obs_agent[i+1-self.history_len:i+1]
+            obs_agent_rnn.append(x)
+        return torch.stack(obs_agent_rnn)
+
 
     def train(self, num_iter, num_episodes=4, test_freq=100):
         scores_episode = []
         score_test_list = []
-        
+        policy_loss_list = []
+        value_loss_list = []
+
         for iter in range(num_iter):
             obs, actions, log_probs_old, returns, _, advantages, scores, _ = self.create_rollouts(num_episodes)
 
@@ -330,8 +425,14 @@ class iPPO:
             scores_episode += scores
 
             for i in range(self.n_agents):
-                loss = self.agents[i].train_step(obs[i], actions[:,i], log_probs_old[:, i], returns[:,i], advantages[:, i])
-            
+                if self.useRNN:
+                    obs_agent_rnn = self.preprocess_input_for_rnn(obs[i])
+                    loss = self.agents[i].train_step(obs_agent_rnn, actions[:,i], log_probs_old[:, i], returns[:,i], advantages[:, i])
+                else:
+                    loss = self.agents[i].train_step(obs[i], actions[:,i], log_probs_old[:, i], returns[:,i], advantages[:, i])
+            policy_loss_list.append(loss[0])
+            value_loss_list.append(loss[1])
+
             if iter % test_freq == 0:
                 score_test = self.test(50)
                 score_test_list.append(score_test)
@@ -339,4 +440,4 @@ class iPPO:
                     break
                 print(f"Episode: {iter}, mean score rollout: {np.mean(scores)} Score test: {score_test}")
                     
-        return scores_episode, score_test_list
+        return scores_episode, score_test_list, policy_loss_list, value_loss_list
