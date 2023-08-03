@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
 from torch.distributions import Categorical
 
 def init_weights(m, gain):
@@ -113,63 +112,6 @@ def discount_rewards(rewards, gamma, dones, normalize=True):
     return returns
 
 
-def create_rollouts(env, agents, num_episodes=4):
-    # Simulate the rolling policy for num_episodes
-    device = agents[0].device
-    states = []
-    actions = []
-    log_probs = []
-    # entropies = []
-    rewards = []
-    scores = []
-    values = []
-    dones = []
-    
-    for _ in range(num_episodes):
-        done = False
-        rewards_episode = []
-        state = torch.tensor(env.reset(), dtype=torch.float).to(device)
-        while not done:
-            states.append(state)
-            action_agent = []
-            log_prob_agent = []
-            # entropy_agent = []
-            value_agent = []
-            for i, agent in enumerate(agents):
-                action, log_prob, entropy = agent.select_action(state[i], train=True)
-                action_agent.append(action)
-                log_prob_agent.append(log_prob)
-                # entropy_agent.appent(entropy)
-                value = agent.value_network(state[i]).item()
-                value_agent.append(value)
-            
-            next_state, reward, done = env.step(action_agent)
-            
-            dones.append(done)
-            actions.append(action_agent)
-            log_probs.append(log_prob_agent)
-            # entropies.append(entropy_agent)
-            values.append(value_agent)
-            rewards_episode.append(reward)
-            rewards.append(reward)
-            state = torch.as_tensor(next_state, dtype=torch.float).to(device)
-
-        n_received = env.received_packets.sum() - (env.current_state).sum()
-        if n_received > 0:
-            score = env.successful_transmissions / n_received        
-        else:
-            score = 1.
-        
-        scores.append(score)
-
-    values = np.array(values)
-    rewards = np.stack(rewards)
-    advantages = compute_gae(rewards, dones, values, agents[0].gamma, 0.97)
-    returns = discount_rewards(rewards, agents[0].gamma, dones, True)
-    log_probs = torch.tensor(log_probs)
-    # entropies = torch.stack(entropies)
-
-    return torch.stack(states), np.array(actions), log_probs, returns, values, advantages, scores, dones
 
 class PPO:
     def __init__(self,
@@ -293,8 +235,7 @@ class iPPO:
         
     def create_rollouts(self, num_episodes=4):
         # Simulate the rolling policy for num_episodes
-        buffer_states = []
-        channel_states = []
+        states = []
         observations = {f"{i}": [] for i in range(self.n_agents)}
         actions = []
         log_probs = []
@@ -307,10 +248,9 @@ class iPPO:
         for e in range(num_episodes):
             done = False
             rewards_episode = []
-            obs, (buffer_state, channel_state) = self.env.reset()
+            obs, state = self.env.reset()
             while not done:
-                buffer_states.append(buffer_state)
-                channel_states.append(channel_state)
+                states.append(state)
                 action_agent = []
                 log_prob_agent = []
                 # entropy_agent = []

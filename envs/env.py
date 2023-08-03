@@ -44,6 +44,10 @@ class D2DEnv:
                                                            shape=(self.deadlines[self.neighbourhoods[k]].sum() + len(self.neighbourhoods[k]) + 1,)) for k in range(self.n_agents)])
         self.action_space = spaces.Tuple([spaces.Discrete(2) for _ in range(self.n_agents)])
 
+        self.state_space = spaces.Box(low=-float('inf'), high=float('inf'),
+                                                        shape=(self.deadlines.sum() + self.n_agents + 1,))
+
+
     def reset(self):
         self.current_buffers = np.zeros((self.n_agents, np.max(self.deadlines)))      # The buffer status of all devices.
         # Set arrival times
@@ -91,7 +95,8 @@ class D2DEnv:
             channel_obs = self.channel_state[self.neighbourhoods[k]]
             obs.append(np.concatenate([buffer_obs, channel_obs, np.copy([self.last_feedback])]))
 
-        state = [self.current_buffers.copy(), self.channel_state]
+        all_buffers = np.concatenate([self.current_buffers[i, :self.deadlines[i]] for i in range(self.n_agents)])
+        state = np.concatenate([all_buffers, self.channel_state, np.array([self.last_feedback])])
 
         return obs, state
 
@@ -181,7 +186,8 @@ class D2DEnv:
             channel_obs = self.channel_state[self.neighbourhoods[k]]
             obs.append(np.concatenate([buffer_obs, channel_obs, np.copy([ack_nack])]))
 
-        state = [next_buffers.copy(), self.channel_state.copy(), ack_nack]
+        all_buffers = np.concatenate([next_buffers[i, :self.deadlines[i]] for i in range(self.n_agents)])
+        state = np.concatenate([all_buffers, self.channel_state, np.array([ack_nack])])
         rewards = np.zeros(self.n_agents) + ack_nack
 
         if self.verbose:
