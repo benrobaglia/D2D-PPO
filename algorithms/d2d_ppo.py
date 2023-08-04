@@ -172,12 +172,13 @@ class PPO:
     
     def train_step(self, states, actions, log_probs_old, M, cliprange=0.1, beta=0.01):
         # Update policy
+        M = M.to(self.device)
         log_probs, entropy = self.evaluate(states, actions)
         entropy = entropy.mean()
 
         ratio = torch.exp(log_probs - log_probs_old.to(self.device))
-        surr1 = ratio * M.to(self.device)
-        surr2 = torch.clamp(ratio, 1.0 - cliprange, 1.0 + cliprange) * M.to(self.device)
+        surr1 = ratio * M
+        surr2 = torch.clamp(ratio, 1.0 - cliprange, 1.0 + cliprange) * M
         policy_loss = - torch.min(surr1, surr2).mean() - beta * entropy
         
         self.policy_optimizer.zero_grad()
