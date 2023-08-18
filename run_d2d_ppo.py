@@ -1,13 +1,20 @@
 import numpy as np
 import torch
 import pickle
-from envs.env import D2DEnv
+from envs.channel_selection_env import ChannelSelectionEnv
 from algorithms.d2d_ppo import D2DPPO
 
 print("Device: ", torch.device('cuda' if torch.cuda.is_available() else "cpu"))
 
+def time_to_slot(t):
+    Tf_gf = 4*(1 / 30 * 1e-3 + 2.34e-6)
+    return t / Tf_gf
+
 n_seeds = 1
-n_agents_list = [2, 4, 6, 8, 10]
+n_agents = 6
+ts = np.array([0.5e-3, 1e-3, 1.5e-3, 2e-3])
+inter_arrival_list = time_to_slot(ts)
+n_channels = 16
 
 ippo_scores_list = []
 ippo_jains_list = []
@@ -21,31 +28,25 @@ for seed in range(n_seeds):
     ippo_channel_errors_list_seed = []
     ippo_average_rewards_list_seed = []
 
-    for k in n_agents_list:
-        print(f"k={k}")
-        deadlines = np.array([7] * k)
-        lbdas = np.array([1/14] * k)
+    for it in inter_arrival_list:
+        print(f"inter-arrival= {it}")
+        deadlines = np.array([7] * n_agents)
+        channel_switch = np.array([0.7 for _ in range(n_channels+1)])
+        lbdas = np.array([1/it for _ in range(n_agents)])
         period = None
         arrival_probs = None
         offsets = None
-        # neighbourhoods = [list(range(k)) for i in range(k)] # neighbourhoods full obs
-        neighbourhoods = [[i] for i in range(k)]
-        print(f"Neighbourhoods: {neighbourhoods}")
 
-        env = D2DEnv(k,
-                    deadlines,
-                    lbdas,
-                    period=period,
-                    arrival_probs=arrival_probs,
-                    offsets=offsets,
-                    episode_length=200,
-                    traffic_model='aperiodic',
-                    periodic_devices=[],
-                    reward_type=0,
-                    channel_switch=0,
-                    channel_decoding=1.,
-                    neighbourhoods=neighbourhoods, # Neighbourhoods is a list of size n_agents with the indices of the neighbours for each agent.
-                    verbose=False)
+        env = ChannelSelectionEnv(n_agents=n_agents,
+                              n_channels=n_channels,
+                              deadlines=deadlines,
+                              lbdas=lbdas,
+                              episode_length=200,
+                              traffic_model="aperiodic",
+                              arrival_probs=None,
+                              offsets=None,
+                              channel_switch=channel_switch,
+                             verbose=False)
         
         d2dppo = D2DPPO(env,
                 hidden_size=64, 
@@ -54,7 +55,7 @@ for seed in range(n_seeds):
                 value_lr=1e-3,
                 device=None,
                 useRNN=True,
-                history_len=k,
+                history_len=10,
                 early_stopping=True)
         
         res = d2dppo.train(num_iter=5000, num_episodes=20, n_epoch=4, test_freq=100)    
@@ -77,8 +78,8 @@ for seed in range(n_seeds):
 
 
 d2dppo_result = {"scores": ippo_scores_list, "jains": ippo_jains_list, "channel_errors": ippo_channel_errors_list, "average_rewards": ippo_average_rewards_list,
-                       "xp_params": {'n_agents_list': n_agents_list, 'deadlines': 7, 'interarrivals':14, 'neighbourhoods': neighbourhoods}
+                       "xp_params": {'inter-arrival': ts, 'deadlines': 7, 'interarrivals':14}
                        }
 
 
-pickle.dump(d2dppo_result, open('results/d2d_ppo_partial_obs_rnn.p', 'wb'))
+pickle.dump(d2dppo_result, open('results/d2d_ppo_channel_selection.p', 'wb'))

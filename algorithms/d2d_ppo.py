@@ -266,6 +266,7 @@ class D2DPPO:
                     log_prob_agent.append(log_prob)
                     # entropy_agent.appent(entropy)
                 
+                state = np.concatenate(state)
                 state = torch.tensor(state, dtype=torch.float).to(self.device)
                 states.append(state)
                 next_obs, next_state, reward, done, _ = self.env.step(np.array(action_agent))
