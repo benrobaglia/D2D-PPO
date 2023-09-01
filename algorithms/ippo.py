@@ -352,7 +352,7 @@ class iPPO:
         return torch.stack(obs_agent_rnn)
 
 
-    def train(self, num_iter, num_episodes=4, test_freq=100):
+    def train(self, num_iter, n_epoch=4, num_episodes=4, test_freq=100):
         scores_episode = []
         score_test_list = []
         policy_loss_list = []
@@ -364,20 +364,21 @@ class iPPO:
             # Shape: (len_trajectory * num agents)
             scores_episode += scores
 
-            for i in range(self.n_agents):
-                if self.useRNN:
-                    obs_agent_rnn = self.preprocess_input_for_rnn(obs[i])
-                    loss = self.agents[i].train_step(obs_agent_rnn, actions[:,i], log_probs_old[:, i], returns[:,i], advantages[:, i])
-                else:
-                    loss = self.agents[i].train_step(obs[i], actions[:,i], log_probs_old[:, i], returns[:,i], advantages[:, i])
-            policy_loss_list.append(loss[0])
-            value_loss_list.append(loss[1])
+            for epoch in range(n_epoch):
+                for i in range(self.n_agents):
+                    if self.useRNN:
+                        obs_agent_rnn = self.preprocess_input_for_rnn(obs[i])
+                        loss = self.agents[i].train_step(obs_agent_rnn, actions[:,i], log_probs_old[:, i], returns[:,i], advantages[:, i])
+                    else:
+                        loss = self.agents[i].train_step(obs[i], actions[:,i], log_probs_old[:, i], returns[:,i], advantages[:, i])
+                policy_loss_list.append(loss[0])
+                value_loss_list.append(loss[1])
 
-            if iter % test_freq == 0:
-                score_test = self.test(50)
-                score_test_list.append(score_test)
-                if (score_test[0] == 1) & (self.early_stopping):
-                    break
-                print(f"Episode: {iter}, mean score rollout: {np.mean(scores)} Score test: {score_test}")
+                if iter % test_freq == 0:
+                    score_test = self.test(50)
+                    score_test_list.append(score_test)
+                    if (score_test[0] == 1) & (self.early_stopping):
+                        break
+                    print(f"Episode: {iter}, mean score rollout: {np.mean(scores)} Score test: {score_test}")
                     
         return scores_episode, score_test_list, policy_loss_list, value_loss_list

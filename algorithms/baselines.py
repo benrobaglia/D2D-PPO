@@ -1,6 +1,50 @@
 import numpy as np
 import random
 
+
+class RandomAccess:
+    def __init__(self, env, verbose=False):
+        self.env = env
+        self.verbose = verbose
+    
+    def act(self, buffers):
+        n_packets = buffers.reshape((self.env.n_agents, self.env.deadlines.max())).sum(1)
+        actions = np.random.choice(np.arange(0, self.env.n_channels+1), size=self.env.n_agents)
+        actions[n_packets == 0] = 0
+        return actions
+    
+    def run(self, n_episodes):
+        number_of_discarded = []
+        number_of_received = []
+        rewards_list = []
+        jains_index = []
+        channel_score = []
+        for _ in range(n_episodes):
+            rewards_episode = []
+            done = False
+            _, (buffer_state, channel_state) = self.env.reset()
+
+            while not done:
+
+                action = self.act(buffer_state)
+                _, next_state, reward, done, _ = self.env.step(action)
+                buffer_state = next_state[0]
+                rewards_episode.append(reward)
+
+            rewards_list.append(np.sum(rewards_episode))
+            number_of_received.append(self.env.received_packets.sum())
+            number_of_discarded.append(self.env.discarded_packets.sum())
+            jains_index.append(self.env.compute_jains())
+            channel_score.append(self.env.compute_channel_score())
+            
+            
+        if self.verbose:
+            print(f"Number of received packets: {np.sum(number_of_received)}")
+            print(f"Channel score: {np.mean(channel_score)}")
+
+        return 1 - np.sum(number_of_discarded) / np.sum(number_of_received), np.mean(jains_index), np.mean(channel_score), np.mean(rewards_list)
+
+
 class EarliestDeadlineFirstScheduler:
     def __init__(self, env, use_channel=False, verbose=False):
         self.env = env
