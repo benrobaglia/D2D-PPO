@@ -230,4 +230,7 @@ class ChannelSelectionEnv:
         return urllc_scores
     
     def compute_channel_score(self):
-        return self.selected_channel_qualities / self.number_selected_channel
+        if self.number_selected_channel != 0:
+            return self.selected_channel_qualities / self.number_selected_channel
+        else:
+            return 1

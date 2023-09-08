@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions import Categorical
+from torch.distributions import Categorical, Bernoulli
 
 def init_weights(m, gain):
     if (type(m) == nn.Linear) | (type(m) == nn.Conv2d):
@@ -12,11 +12,12 @@ def init_weights(m, gain):
 
 
 class RNN(torch.nn.Module):
-    def __init__(self, n_inputs, n_outputs, hidden_size=100, use_softmax=False, **kwargs):
+    def __init__(self, n_inputs, n_outputs, hidden_size=100, combinatorial=False, use_activation=True, **kwargs):
 
         super().__init__()
         self.hidden_size = hidden_size
-        self.use_softmax = use_softmax
+        self.combinatorial = combinatorial
+        self.use_activation = use_activation
         self.lstm = nn.GRU(n_inputs, hidden_size, 1)
         layers = []
         # layers.append(nn.Linear(hidden_size, hidden_size))
@@ -42,8 +43,11 @@ class RNN(torch.nn.Module):
         lstm_out, self.hidden = self.lstm(obs.permute(1, 0, 2))
         out = lstm_out[-1]
         out = self.layers(out)
-        if self.use_softmax:
-            out = F.softmax(out, dim=1)
+        if self.use_activation:
+            if not self.combinatorial:
+                out = F.softmax(out, dim=1)
+            else:
+                out = torch.sigmoid(out)
         return out
 
 
@@ -122,12 +126,14 @@ class PPO:
                 policy_lr=1e-3, 
                 value_lr=1e-3, 
                 useRNN=False,
+                combinatorial=False,
                 device='cpu', 
                 history_len = 5,
                 early_stopping=True):
         
         self.history_len = history_len
         self.useRNN = useRNN
+        self.combinatorial = combinatorial
         self.early_stopping = early_stopping
         self.device = torch.device(device)
         self.n_actions = n_actions
@@ -136,8 +142,8 @@ class PPO:
             self.policy_network = Policy(num_inputs, n_actions, hidden_size)
             self.value_network = Value(num_inputs, hidden_size)
         else:
-            self.policy_network = RNN(num_inputs, n_actions, hidden_size, use_softmax=True)
-            self.value_network = RNN(num_inputs, 1, hidden_size, use_softmax=False)
+            self.policy_network = RNN(num_inputs, n_actions, hidden_size, combinatorial=combinatorial)
+            self.value_network = RNN(num_inputs, 1, hidden_size, combinatorial=False, use_activation=False)
 
         self.gamma = gamma
         self.policy_network = self.policy_network.to(self.device)
@@ -147,24 +153,44 @@ class PPO:
 
     def select_action(self, state, train=True):
         probs = self.policy_network(state.to(self.device))    
-        dist = Categorical(probs)
-        if train:
-            action = dist.sample()
+        if self.combinatorial:
+            dist = Bernoulli(probs)
+            if train:
+                action = dist.sample().squeeze()
+            else:
+                action = dist.probs.squeeze() > 0.5
+                action = action * 1.
+            log_prob = dist.log_prob(action).mean(-1)
+            entropy = dist.entropy().mean(-1)
+                
         else:
-            action = probs.argmax(dim=1)
-        log_prob = dist.log_prob(action)
-        entropy = dist.entropy()
+            dist = Categorical(probs)
+            if train:
+                action = dist.sample()
+            else:
+                action = probs.argmax(dim=1)
 
-        return action.item(), log_prob, entropy
+            log_prob = dist.log_prob(action)
+            entropy = dist.entropy()
+
+        return action.cpu().detach().numpy(), log_prob, entropy
 
     def evaluate(self, states, actions):
         # States : batch * state_size
         # Actions: list
         probs = self.policy_network(states.to(self.device).squeeze())
-        dist = Categorical(probs)
-        log_probs = dist.log_prob(torch.tensor(actions).to(self.device))
-        return log_probs, dist.entropy()
-    
+        if self.combinatorial:
+            dist = Bernoulli(probs)
+            log_probs = dist.log_prob(torch.tensor(actions).to(self.device)).mean(-1)
+            dist_entropy = dist.entropy().mean(-1)
+        else:
+            dist = Categorical(probs)
+            log_probs = dist.log_prob(torch.tensor(actions).to(self.device))
+            dist_entropy = dist.entropy()
+
+        return log_probs, dist_entropy
+
+
     def train_step(self, states, actions, log_probs_old, returns, advantages, cliprange=0.1, beta=0.01):
         # Update policy
         log_probs, entropy = self.evaluate(states, actions)
@@ -204,6 +230,7 @@ class iPPO:
                 value_lr=1e-3,
                 device=None,
                 useRNN=False,
+                combinatorial=False,
                 history_len=10,
                 early_stopping=True):
         
@@ -216,6 +243,7 @@ class iPPO:
         self.value_lr=value_lr,
         self.early_stopping = early_stopping
         self.useRNN = useRNN
+        self.combinatorial = combinatorial
         
         if device is None:
             self.device = torch.device('cuda' if torch.cuda.is_available() else "cpu")
@@ -229,6 +257,7 @@ class iPPO:
                            policy_lr=policy_lr,
                            value_lr=value_lr,
                            useRNN=useRNN,
+                           combinatorial=combinatorial,
                            history_len=history_len,
                            device=self.device,
                            early_stopping=early_stopping) for k in range(self.n_agents)]
@@ -237,7 +266,7 @@ class iPPO:
         # Simulate the rolling policy for num_episodes
         states = []
         observations = {f"{i}": [] for i in range(self.n_agents)}
-        actions = []
+        actions_list = []
         log_probs = []
         # entropies = []
         rewards = []
@@ -271,10 +300,15 @@ class iPPO:
                     # entropy_agent.appent(entropy)
                     value_agent.append(value)
                 
-                next_obs, next_state, reward, done, _ = self.env.step(np.array(action_agent))
+                if self.combinatorial:
+                    actions = np.stack(action_agent)
+                else:
+                    actions = np.array(action_agent)
+
+                next_obs, next_state, reward, done, _ = self.env.step(actions)
                 
                 dones.append(done)
-                actions.append(action_agent)
+                actions_list.append(actions)
                 log_probs.append(log_prob_agent)
                 # entropies.append(entropy_agent)
                 values.append(value_agent)
@@ -294,7 +328,7 @@ class iPPO:
         # entropies = torch.stack(entropies)
         obs_tensor = [torch.stack(observations[str(i)]) for i in range(self.n_agents)]
 
-        return obs_tensor, np.array(actions), log_probs, returns, values, advantages, scores, dones
+        return obs_tensor, np.stack(actions_list), log_probs, returns, values, advantages, scores, dones
 
     def test(self, num_episodes):
         scores_episode = []
@@ -322,6 +356,11 @@ class iPPO:
                         action, _, _ = agent.select_action(obs_agent, train=False)
 
                     actions.append(action)
+
+                if self.combinatorial:
+                    actions = np.stack(actions)
+                else:
+                    actions = np.array(actions)
 
                 next_obs, _, reward, done, _ = self.env.step(actions)
                 running_rewards.append(reward.mean())
@@ -378,7 +417,7 @@ class iPPO:
                     score_test = self.test(50)
                     score_test_list.append(score_test)
                     if (score_test[0] == 1) & (self.early_stopping):
-                        break
+                        return scores_episode, score_test_list, policy_loss_list, value_loss_list
                     print(f"Episode: {iter}, mean score rollout: {np.mean(scores)} Score test: {score_test}")
                     
         return scores_episode, score_test_list, policy_loss_list, value_loss_list

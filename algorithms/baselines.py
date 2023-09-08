@@ -166,3 +166,57 @@ class GFAccess:
             print(f"Number of channel_losses: {np.sum(number_channel_losses)}")
 
         return 1 - np.sum(number_of_discarded) / np.sum(number_of_received), np.mean(jains_index), np.sum(number_channel_losses), np.mean(rewards_list)
+
+
+class CombinatorialRandomAccess:
+    def __init__(self, env, transmission_prob=0.5, transmission_prob_list=None, verbose=False):
+        self.env = env
+        self.transmission_prob = transmission_prob
+        if transmission_prob_list is None:
+            self.transmission_prob_list = np.arange(0, 1, 0.1)
+        else:
+            self.transmission_prob_list = transmission_prob_list
+        self.verbose = verbose
+    
+    def act(self, buffers):
+        actions = np.random.binomial(1, self.transmission_prob, (self.env.n_agents, self.env.n_channels))
+        return actions
+
+    def get_best_transmission_probs(self, n_episodes):
+        cv = []
+        for tp in self.transmission_prob_list:
+            self.transmission_prob = tp
+            score, _, _, _ = self.run(n_episodes)
+            cv.append(np.mean(score))
+        return cv
+
+    def run(self, n_episodes):
+        number_of_discarded = []
+        number_of_received = []
+        rewards_list = []
+        jains_index = []
+        channel_score = []
+        for _ in range(n_episodes):
+            rewards_episode = []
+            done = False
+            _, (buffer_state, channel_state) = self.env.reset()
+
+            while not done:
+
+                action = self.act(buffer_state)
+                _, next_state, reward, done, _ = self.env.step(action)
+                buffer_state = next_state[0]
+                rewards_episode.append(reward)
+
+            rewards_list.append(np.sum(rewards_episode))
+            number_of_received.append(self.env.received_packets.sum())
+            number_of_discarded.append(self.env.discarded_packets.sum())
+            jains_index.append(self.env.compute_jains())
+            channel_score.append(self.env.compute_channel_score())
+            
+            
+        if self.verbose:
+            print(f"Number of received packets: {np.sum(number_of_received)}")
+            print(f"Channel score: {np.mean(channel_score)}")
+
+        return 1 - np.sum(number_of_discarded) / np.sum(number_of_received), np.mean(jains_index), np.mean(channel_score), np.mean(rewards_list)
