@@ -17,8 +17,9 @@ n_seeds = 1
 n_agents = 5
 # ts = np.array([0.5e-3, 1e-3, 1.5e-3, 2e-3])
 # inter_arrival_list = time_to_slot(ts)
-n_channels = 8
-loads = [1/21, 1/14, 1/7, 1/3.5, 1/1.75]
+n_channels = 10
+loads = [1/21, 1/14, 1/7, 1/3.5, 1/1.75, 1]
+# loads = [1]
 
 ppo_scores_list = []
 ppo_jains_list = []
@@ -37,7 +38,7 @@ for seed in range(n_seeds):
     for load in loads:
         print(f"load= {load}")
         deadlines = np.array([7] * n_agents)
-        channel_switch = np.array([0.8 for _ in range(n_channels+1)])
+        channel_switch = np.array([0.8 for _ in range(n_channels)])
         lbdas = np.array([load for _ in range(n_agents)])
         # period = np.array([7 for _ in range(n_agents)])
         # arrival_probs = np.array([1 for _ in range(n_agents)])
@@ -58,7 +59,7 @@ for seed in range(n_seeds):
                         hidden_size=64, 
                         gamma=0.99,
                         policy_lr=3e-4,
-                        value_lr=1e-2,
+                        value_lr=1e-3,
                         device=None,
                         useRNN=True,
                         combinatorial=True,
@@ -66,7 +67,7 @@ for seed in range(n_seeds):
                         early_stopping=True
                         )
         
-        res = ppo.train(num_iter=1000, n_epoch=4, num_episodes=5, test_freq=100)    
+        res = ppo.train(num_iter=5000, n_epoch=4, num_episodes=5, test_freq=100)    
         score_ppo, jains_ppo, channel_error_ppo, rewards_ppo = ppo.test(500)
 
         print(f"URLLC score ppo: {score_ppo}")
