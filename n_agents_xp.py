@@ -4,7 +4,7 @@ import pickle
 from envs.combinatorial_env import CombinatorialEnv
 from algorithms.d2d_ppo import D2DPPO
 
-path = 'results/mcappo_combinatorial_load_xp.p'
+path = 'results/n_agents_xp_mca_ppo.p'
 
 print("Device: ", torch.device('cuda' if torch.cuda.is_available() else "cpu"))
 print(f"path: {path}")
@@ -14,12 +14,12 @@ def time_to_slot(t):
     return t / Tf_gf
 
 n_seeds = 1
-n_agents = 5
 # ts = np.array([0.5e-3, 1e-3, 1.5e-3, 2e-3])
 # inter_arrival_list = time_to_slot(ts)
-n_channels = 10
+n_channels = 5
 # loads = [1/21, 1/14, 1/7, 1/3.5, 1/1.75, 1]
-loads = [1]
+load = 1/14
+n_agents_list = [4, 6, 8, 10]
 
 ppo_scores_list = []
 ppo_jains_list = []
@@ -35,8 +35,8 @@ for seed in range(n_seeds):
     ppo_average_rewards_list_seed = []
     training_list_seed = []
 
-    for load in loads:
-        print(f"load= {load}")
+    for n_agents in n_agents_list:
+        print(f"n_agents= {n_agents}")
         deadlines = np.array([7] * n_agents)
         channel_switch = np.array([0.8 for _ in range(n_channels)])
         lbdas = np.array([load for _ in range(n_agents)])
@@ -56,18 +56,18 @@ for seed in range(n_seeds):
                                 verbose=False)
 
         ppo = D2DPPO(env, 
-                        hidden_size=64, 
-                        gamma=0.99,
-                        policy_lr=1e-4,
-                        value_lr=1e-2,
-                        device=None,
-                        useRNN=True,
-                        combinatorial=True,
-                        history_len=10,
-                        early_stopping=True
-                        )
+                    hidden_size=64, 
+                    gamma=0.99,
+                    policy_lr=1e-4,
+                    value_lr=1e-3,
+                    device=None,
+                    useRNN=True,
+                    combinatorial=True,
+                    history_len=10,
+                    early_stopping=True
+                    )
         
-        res = ppo.train(num_iter=2000, n_epoch=4, num_episodes=10, test_freq=100)    
+        res = ppo.train(num_iter=5000, n_epoch=4, num_episodes=10, test_freq=100)    
         score_ppo, jains_ppo, channel_error_ppo, rewards_ppo = ppo.test(500)
 
         print(f"URLLC score ppo: {score_ppo}")
@@ -94,7 +94,7 @@ ppo_result = {"scores": ppo_scores_list,
                 "jains": ppo_jains_list, 
                 "channel_errors": ppo_channel_errors_list, 
                 "average_rewards": ppo_average_rewards_list,
-                "xp_params": {'loads': loads, 'deadlines': 7},
+                "xp_params": {'n_agents': n_agents_list, 'deadlines': 7},
                 "training": training_list
                }
 

@@ -203,7 +203,7 @@ class PPO:
         
         self.policy_optimizer.zero_grad()
         policy_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.policy_network.parameters(), 40)
+        torch.nn.utils.clip_grad_norm_(self.policy_network.parameters(), 50)
         self.policy_optimizer.step()
         
         # Update value
@@ -213,7 +213,7 @@ class PPO:
         
         self.value_optimizer.zero_grad()
         value_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.value_network.parameters(), 40)
+        torch.nn.utils.clip_grad_norm_(self.value_network.parameters(), 50)
         self.value_optimizer.step()
         
         return policy_loss.item(), value_loss.item()

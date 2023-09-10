@@ -206,7 +206,7 @@ class PPO:
         
         self.policy_optimizer.zero_grad()
         policy_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.policy_network.parameters(), 40)
+        torch.nn.utils.clip_grad_norm_(self.policy_network.parameters(), 50)
         self.policy_optimizer.step()
         
         M = ratio * M
@@ -426,7 +426,7 @@ class D2DPPO:
                 
                 self.value_optimizer.zero_grad()
                 value_loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.value_network.parameters(), 40)
+                torch.nn.utils.clip_grad_norm_(self.value_network.parameters(), 50)
                 self.value_optimizer.step()
 
                 value_loss_list.append(value_loss)

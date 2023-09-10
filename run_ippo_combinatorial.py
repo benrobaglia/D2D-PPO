@@ -18,8 +18,8 @@ n_agents = 5
 # ts = np.array([0.5e-3, 1e-3, 1.5e-3, 2e-3])
 # inter_arrival_list = time_to_slot(ts)
 n_channels = 10
-loads = [1/21, 1/14, 1/7, 1/3.5, 1/1.75, 1]
-# loads = [1]
+# loads = [1/21, 1/14, 1/7, 1/3.5, 1/1.75, 1]
+loads = [1]
 
 
 ppo_scores_list = []
@@ -59,8 +59,8 @@ for seed in range(n_seeds):
         ippo = iPPO(env, 
                     hidden_size=64, 
                     gamma=0.99,
-                    policy_lr=3e-4,
-                    value_lr=1e-3,
+                    policy_lr=1e-4,
+                    value_lr=2e-3,
                     device=None,
                     useRNN=True,
                     combinatorial=True,
@@ -68,7 +68,7 @@ for seed in range(n_seeds):
                     early_stopping=True
                     )
         
-        res = ippo.train(num_iter=2000, n_epoch=4, num_episodes=5, test_freq=100)    
+        res = ippo.train(num_iter=2000, n_epoch=4, num_episodes=10, test_freq=100)    
         score_ppo, jains_ppo, channel_error_ppo, rewards_ppo = ippo.test(500)
 
         print(f"URLLC score ppo: {score_ppo}")
