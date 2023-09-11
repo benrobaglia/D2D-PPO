@@ -4,7 +4,7 @@ import pickle
 from envs.combinatorial_env import CombinatorialEnv
 from algorithms.d2d_ppo import D2DPPO
 
-path = 'results/mcappo_combinatorial_load_xp.p'
+path = 'results/combinatorial_load/mcappo.p'
 
 print("Device: ", torch.device('cuda' if torch.cuda.is_available() else "cpu"))
 print(f"path: {path}")
@@ -13,13 +13,13 @@ def time_to_slot(t):
     Tf_gf = 4*(1 / 30 * 1e-3 + 2.34e-6)
     return t / Tf_gf
 
-n_seeds = 1
+n_seeds = 5
 n_agents = 5
 # ts = np.array([0.5e-3, 1e-3, 1.5e-3, 2e-3])
 # inter_arrival_list = time_to_slot(ts)
 n_channels = 10
-# loads = [1/21, 1/14, 1/7, 1/3.5, 1/1.75, 1]
-loads = [1]
+loads = [1/21, 1/14, 1/7, 1/3.5, 1/1.75, 1]
+# loads = [1]
 
 ppo_scores_list = []
 ppo_jains_list = []
@@ -62,6 +62,7 @@ for seed in range(n_seeds):
                         value_lr=1e-2,
                         device=None,
                         useRNN=True,
+                        save_path='results/combinatorial_load/models',
                         combinatorial=True,
                         history_len=10,
                         early_stopping=True

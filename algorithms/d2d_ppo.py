@@ -136,6 +136,7 @@ class PPO:
                 combinatorial=False,
                 device='cpu', 
                 history_len = 5,
+                save_path=None,
                 early_stopping=True):
         
         self.history_len = history_len
@@ -144,6 +145,7 @@ class PPO:
         self.early_stopping = early_stopping
         self.device = torch.device(device)
         self.n_actions = n_actions
+        self.save_path = save_path
 
         if not self.useRNN:
             self.policy_network = Policy(num_inputs, n_actions, hidden_size)
@@ -206,13 +208,13 @@ class PPO:
         
         self.policy_optimizer.zero_grad()
         policy_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.policy_network.parameters(), 50)
+        # torch.nn.utils.clip_grad_norm_(self.policy_network.parameters(), 50)
         self.policy_optimizer.step()
         
         M = ratio * M
 
         return policy_loss.item(), M
-    
+
 
 class D2DPPO:
     def __init__(self,
@@ -223,6 +225,7 @@ class D2DPPO:
                 value_lr=1e-3,
                 device=None,
                 useRNN=False,
+                save_path=None,
                 combinatorial=False,
                 history_len=10,
                 early_stopping=True):
@@ -236,6 +239,7 @@ class D2DPPO:
         self.value_lr=value_lr,
         self.early_stopping = early_stopping
         self.useRNN = useRNN
+        self.save_path = save_path
         self.combinatorial = combinatorial
         
         if device is None:
@@ -259,6 +263,15 @@ class D2DPPO:
         self.value_network = self.value_network.to(self.device)
         self.value_optimizer = torch.optim.Adam(self.value_network.parameters(), lr=value_lr)
 
+    def save(self, checkpoint_path):
+        for i, agent in enumerate(self.agents):
+            torch.save(agent.policy_network.state_dict(), f"{checkpoint_path}/agent_{i}.pth")
+        print("Models saved!")
+
+    def load(self, checkpoint_path):
+        for i, agent in enumerate(self.agents):
+            agent.policy_network.load_state_dict(torch.load(f"{checkpoint_path}/agent_{i}.pth"))
+        print("Models loaded!")
         
     def create_rollouts(self, num_episodes=4):
         # Simulate the rolling policy for num_episodes
@@ -432,10 +445,14 @@ class D2DPPO:
                 value_loss_list.append(value_loss)
 
                 if iter % test_freq == 0:
-                    score_test = self.test(50)
+                    score_test, jains, channel_loss, avg_rewards = self.test(50)
                     score_test_list.append(score_test)
-                    if (score_test[0] == 1) & (self.early_stopping):
+                    print(f"Iteration: {iter}, Epoch: {epoch}, score rollout: {np.mean(scores)} Score test: {(score_test, jains, channel_loss, avg_rewards)}")
+
+                    if np.max(score_test_list) == score_test:
+                        if self.save_path is not None:
+                            self.save(self.save_path)
+                    if (score_test == 1) & (self.early_stopping):
                         return scores_episode, score_test_list, policy_loss_list, value_loss_list
-                    print(f"Iteration: {iter}, Epoch: {epoch}, score rollout: {np.mean(scores)} Score test: {score_test}")
                     
         return scores_episode, score_test_list, policy_loss_list, value_loss_list

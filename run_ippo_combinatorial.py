@@ -60,7 +60,7 @@ for seed in range(n_seeds):
                     hidden_size=64, 
                     gamma=0.99,
                     policy_lr=1e-4,
-                    value_lr=2e-3,
+                    value_lr=1e-2,
                     device=None,
                     useRNN=True,
                     combinatorial=True,

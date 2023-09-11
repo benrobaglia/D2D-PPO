@@ -3,8 +3,9 @@ import torch
 import pickle
 from envs.combinatorial_env import CombinatorialEnv
 from algorithms.d2d_ppo import D2DPPO
+from algorithms.ippo import iPPO
 
-path = 'results/n_agents_xp_mca_ppo.p'
+path = 'results/aaa.p'
 
 print("Device: ", torch.device('cuda' if torch.cuda.is_available() else "cpu"))
 print(f"path: {path}")
@@ -19,7 +20,7 @@ n_seeds = 1
 n_channels = 5
 # loads = [1/21, 1/14, 1/7, 1/3.5, 1/1.75, 1]
 load = 1/14
-n_agents_list = [4, 6, 8, 10]
+n_agents_list = [10]
 
 ppo_scores_list = []
 ppo_jains_list = []
@@ -55,7 +56,7 @@ for seed in range(n_seeds):
                                 channel_switch=channel_switch,
                                 verbose=False)
 
-        ppo = D2DPPO(env, 
+        ppo = iPPO(env, 
                     hidden_size=64, 
                     gamma=0.99,
                     policy_lr=1e-4,

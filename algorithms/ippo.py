@@ -203,7 +203,7 @@ class PPO:
         
         self.policy_optimizer.zero_grad()
         policy_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.policy_network.parameters(), 50)
+        # torch.nn.utils.clip_grad_norm_(self.policy_network.parameters(), 50)
         self.policy_optimizer.step()
         
         # Update value
@@ -416,8 +416,10 @@ class iPPO:
                 if iter % test_freq == 0:
                     score_test = self.test(50)
                     score_test_list.append(score_test)
+                    print(f"Episode: {iter}, mean score rollout: {np.mean(scores)} Score test: {score_test}")
+                    
                     if (score_test[0] == 1) & (self.early_stopping):
                         return scores_episode, score_test_list, policy_loss_list, value_loss_list
-                    print(f"Episode: {iter}, mean score rollout: {np.mean(scores)} Score test: {score_test}")
+                    
                     
         return scores_episode, score_test_list, policy_loss_list, value_loss_list
