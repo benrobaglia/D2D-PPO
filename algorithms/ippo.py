@@ -203,7 +203,7 @@ class PPO:
         
         self.policy_optimizer.zero_grad()
         policy_loss.backward()
-        # torch.nn.utils.clip_grad_norm_(self.policy_network.parameters(), 50)
+        torch.nn.utils.clip_grad_norm_(self.policy_network.parameters(), 80)
         self.policy_optimizer.step()
         
         # Update value
@@ -213,7 +213,7 @@ class PPO:
         
         self.value_optimizer.zero_grad()
         value_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.value_network.parameters(), 50)
+        torch.nn.utils.clip_grad_norm_(self.value_network.parameters(), 80)
         self.value_optimizer.step()
         
         return policy_loss.item(), value_loss.item()
@@ -230,6 +230,7 @@ class iPPO:
                 value_lr=1e-3,
                 device=None,
                 useRNN=False,
+                save_path=None,
                 combinatorial=False,
                 history_len=10,
                 early_stopping=True):
@@ -239,12 +240,14 @@ class iPPO:
         self.n_agents = env.n_agents
         self.hidden_size = hidden_size
         self.gamma = gamma
-        self.policy_lr=policy_lr, 
-        self.value_lr=value_lr,
+        self.policy_lr=policy_lr 
+        self.value_lr=value_lr
         self.early_stopping = early_stopping
         self.useRNN = useRNN
         self.combinatorial = combinatorial
         
+        self.save_path = save_path
+
         if device is None:
             self.device = torch.device('cuda' if torch.cuda.is_available() else "cpu")
         else:
@@ -262,6 +265,17 @@ class iPPO:
                            device=self.device,
                            early_stopping=early_stopping) for k in range(self.n_agents)]
         
+    def save(self, checkpoint_path):
+        for i, agent in enumerate(self.agents):
+            torch.save(agent.policy_network.state_dict(), f"{checkpoint_path}/agent_{i}.pth")
+        print("Models saved!")
+
+    def load(self, checkpoint_path):
+        for i, agent in enumerate(self.agents):
+            agent.policy_network.load_state_dict(torch.load(f"{checkpoint_path}/agent_{i}.pth"))
+        print("Models loaded!")
+
+
     def create_rollouts(self, num_episodes=4):
         # Simulate the rolling policy for num_episodes
         states = []
@@ -414,11 +428,15 @@ class iPPO:
                 value_loss_list.append(loss[1])
 
                 if iter % test_freq == 0:
-                    score_test = self.test(50)
+                    score_test, jains, channel_loss, avg_rewards = self.test(50)
                     score_test_list.append(score_test)
-                    print(f"Episode: {iter}, mean score rollout: {np.mean(scores)} Score test: {score_test}")
+                    print(f"Iteration: {iter}, Epoch: {epoch}, score rollout: {np.mean(scores)} Score test: {(score_test, jains, channel_loss, avg_rewards)}")
                     
-                    if (score_test[0] == 1) & (self.early_stopping):
+                    if np.max(score_test_list) == score_test:
+                        if self.save_path is not None:
+                            self.save(self.save_path)
+
+                    if (score_test == 1) & (self.early_stopping):
                         return scores_episode, score_test_list, policy_loss_list, value_loss_list
                     
                     

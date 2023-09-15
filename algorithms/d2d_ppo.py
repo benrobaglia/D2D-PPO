@@ -132,11 +132,11 @@ class PPO:
                 hidden_size=128, 
                 gamma=0.99, 
                 policy_lr=1e-3, 
+                beta_entropy=0.01,
                 useRNN=False,
                 combinatorial=False,
                 device='cpu', 
                 history_len = 5,
-                save_path=None,
                 early_stopping=True):
         
         self.history_len = history_len
@@ -145,7 +145,7 @@ class PPO:
         self.early_stopping = early_stopping
         self.device = torch.device(device)
         self.n_actions = n_actions
-        self.save_path = save_path
+        self.beta_entropy = beta_entropy
 
         if not self.useRNN:
             self.policy_network = Policy(num_inputs, n_actions, hidden_size)
@@ -195,7 +195,7 @@ class PPO:
 
         return log_probs, dist_entropy
     
-    def train_step(self, states, actions, log_probs_old, M, cliprange=0.1, beta=0.01):
+    def train_step(self, states, actions, log_probs_old, M, cliprange=0.1):
         # Update policy
         M = M.to(self.device)
         log_probs, entropy = self.evaluate(states, actions)
@@ -204,11 +204,11 @@ class PPO:
         ratio = torch.exp(log_probs - log_probs_old.to(self.device))
         surr1 = ratio * M
         surr2 = torch.clamp(ratio, 1.0 - cliprange, 1.0 + cliprange) * M
-        policy_loss = - torch.min(surr1, surr2).mean() - beta * entropy
+        policy_loss = - torch.min(surr1, surr2).mean() - self.beta_entropy * entropy
         
         self.policy_optimizer.zero_grad()
         policy_loss.backward()
-        # torch.nn.utils.clip_grad_norm_(self.policy_network.parameters(), 50)
+        torch.nn.utils.clip_grad_norm_(self.policy_network.parameters(), 20)
         self.policy_optimizer.step()
         
         M = ratio * M
@@ -223,6 +223,7 @@ class D2DPPO:
                 gamma=0.99, 
                 policy_lr=1e-3,
                 value_lr=1e-3,
+                beta_entropy=0.01,
                 device=None,
                 useRNN=False,
                 save_path=None,
@@ -237,6 +238,7 @@ class D2DPPO:
         self.gamma = gamma
         self.policy_lr=policy_lr, 
         self.value_lr=value_lr,
+        self.beta_entropy = beta_entropy
         self.early_stopping = early_stopping
         self.useRNN = useRNN
         self.save_path = save_path
@@ -252,6 +254,7 @@ class D2DPPO:
                            hidden_size=hidden_size,
                            gamma=gamma,
                            policy_lr=policy_lr,
+                           beta_entropy=beta_entropy,
                            useRNN=useRNN,
                            combinatorial=combinatorial,
                            history_len=history_len,
@@ -439,7 +442,7 @@ class D2DPPO:
                 
                 self.value_optimizer.zero_grad()
                 value_loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.value_network.parameters(), 50)
+                torch.nn.utils.clip_grad_norm_(self.value_network.parameters(), 20)
                 self.value_optimizer.step()
 
                 value_loss_list.append(value_loss)
