@@ -13,7 +13,7 @@ np.random.seed(random_seed)
 
 
 xp_name = 'combinatorial_load'
-output_path = f'{xp_name}/results/ippo.p'
+output_path = f'{xp_name}/results/ippo_16_channels.p'
 
 if xp_name not in os.listdir():
     print(f"Creating directories for experiment...")
@@ -26,10 +26,12 @@ print(f"output_path: {output_path}")
 
 
 n_seeds = 1
-n_agents = 5
-n_channels = 10
-# loads = [1/14, 1/7, 1/3.5, 1/1.75, 1, 1.25]
-loads = [1.25]
+n_agents = 6
+n_channels = 16
+# loads = [1/21, 1/14, 1/7, 1/3.5, 1/1.75, 1]
+loads = [1]
+episode_length = 200
+channel_switch = np.array([0.8 for _ in range(n_channels)])
 
 
 ppo_scores_list = []
@@ -53,23 +55,25 @@ for seed in range(n_seeds):
         if model_folder not in os.listdir(xp_name):
             os.mkdir(f"{xp_name}/{model_folder}")
 
-        deadlines = np.array([7, 10, 14, 17, 20])
-        channel_switch = np.array([0.8 for _ in range(n_channels)])
-        lbdas = np.array([load for _ in range(n_agents)])
-        # period = np.array([7 for _ in range(n_agents)])
-        # arrival_probs = np.array([1 for _ in range(n_agents)])
-        # offsets = np.array([0, 2, 4, 0, 2])
-        # periodic_devices = np.array([2, 4])
+        deadlines = np.array([7, 14] * (n_agents//2))
+        lbdas = np.array([load] * (n_agents))
+        period = np.array([1/load] * (n_agents))
+        arrival_probs = np.array([0.4, 0.8] * (n_agents//2))
+        offsets = np.zeros(n_agents)
+        periodic_devices = np.array([0, 1])
 
-        
         env = CombinatorialEnv(n_agents=n_agents,
-                                n_channels=n_channels,
-                                deadlines=deadlines,
-                                lbdas=lbdas,
-                                episode_length=200,
-                                traffic_model='aperiodic',
-                                channel_switch=channel_switch,
-                                verbose=False)
+                        n_channels=n_channels,
+                        deadlines=deadlines,
+                        lbdas=lbdas,
+                        period=period,
+                        arrival_probs=arrival_probs,
+                        offsets=offsets,
+                        episode_length=episode_length,
+                        traffic_model='heterogeneous',
+                        periodic_devices=periodic_devices,
+                        channel_switch=channel_switch,
+                        verbose=False)
 
         ippo = iPPO(env, 
                     hidden_size=64, 
@@ -80,11 +84,11 @@ for seed in range(n_seeds):
                     useRNN=True,
                     save_path=f"{xp_name}/{model_folder}",
                     combinatorial=True,
-                    history_len=10,
+                    history_len=6,
                     early_stopping=True
                     )
         
-        res = ippo.train(num_iter=2000, n_epoch=4, num_episodes=10, test_freq=100)    
+        res = ippo.train(num_iter=2000, n_epoch=5, num_episodes=10, test_freq=100)    
 
         ippo.load(f"{xp_name}/{model_folder}")
         score_ppo, jains_ppo, channel_error_ppo, rewards_ppo = ippo.test(500)

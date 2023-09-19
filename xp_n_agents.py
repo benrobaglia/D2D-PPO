@@ -72,34 +72,35 @@ for seed in range(n_seeds):
                                 channel_switch=channel_switch,
                                 verbose=False)
 
-        # ppo = iPPO(env, 
-        #             hidden_size=64, 
-        #             gamma=0.99,
-        #             policy_lr=1e-4,
-        #             value_lr=1e-3,
-        #             device=None,
-        #             useRNN=True,
-        #             combinatorial=True,
-        #             history_len=10,
-        #             early_stopping=True
-        #             )
+        ppo = iPPO(env, 
+                    hidden_size=64, 
+                    gamma=0.4,
+                    policy_lr=3e-4,
+                    value_lr=1e-3,
+                    device=None,
+                    useRNN=True,
+                    save_path=f"{xp_name}/{model_folder}",
+                    combinatorial=True,
+                    history_len=n_agents,
+                    early_stopping=True
+                    )
 
-        ppo = D2DPPO(env, 
-                hidden_size=64, 
-                gamma=0.4,
-                policy_lr=3e-4,
-                value_lr=1e-3,
-                beta_entropy=0.01,
-                device=None,
-                useRNN=True,
-                save_path=f"{xp_name}/{model_folder}",
-                combinatorial=True,
-                history_len=10,
-                early_stopping=True
-                )
+        # ppo = D2DPPO(env, 
+        #         hidden_size=64, 
+        #         gamma=0.4,
+        #         policy_lr=3e-4,
+        #         value_lr=1e-3,
+        #         beta_entropy=0.01,
+        #         device=None,
+        #         useRNN=True,
+        #         save_path=f"{xp_name}/{model_folder}",
+        #         combinatorial=True,
+        #         history_len=n_agegnts,
+        #         early_stopping=True
+        #         )
 
         
-        res = ppo.train(num_iter=10000, n_epoch=5, num_episodes=10, test_freq=500)    
+        res = ppo.train(num_iter=2000, n_epoch=5, num_episodes=10, test_freq=100)    
         ppo.load(f"{xp_name}/{model_folder}")
         score_ppo, jains_ppo, channel_error_ppo, rewards_ppo = ppo.test(500)
 
