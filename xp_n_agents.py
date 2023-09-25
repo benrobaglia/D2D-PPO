@@ -32,7 +32,8 @@ n_seeds = 1
 # inter_arrival_list = time_to_slot(ts)
 n_channels = 4
 load = 1/14
-n_agents_list = [16]
+n_agents_list = [4, 8, 12, 16]
+# n_agents_list = [16]
 
 ppo_scores_list = []
 ppo_jains_list = []
@@ -55,7 +56,7 @@ for seed in range(n_seeds):
             os.mkdir(f"{xp_name}/{model_folder}")
         
         deadlines = np.array([7] * n_agents)
-        channel_switch = np.array([0.8 for _ in range(n_channels)])
+        channel_switch = np.ones((n_agents, n_channels)) * 0.8
         lbdas = np.array([load for _ in range(n_agents)])
         # period = np.array([7 for _ in range(n_agents)])
         # arrival_probs = np.array([1 for _ in range(n_agents)])
@@ -72,32 +73,32 @@ for seed in range(n_seeds):
                                 channel_switch=channel_switch,
                                 verbose=False)
 
-        ppo = iPPO(env, 
-                    hidden_size=64, 
-                    gamma=0.4,
-                    policy_lr=3e-4,
-                    value_lr=1e-3,
-                    device=None,
-                    useRNN=True,
-                    save_path=f"{xp_name}/{model_folder}",
-                    combinatorial=True,
-                    history_len=n_agents,
-                    early_stopping=True
-                    )
+        # ppo = iPPO(env, 
+        #             hidden_size=64, 
+        #             gamma=0.4,
+        #             policy_lr=3e-4,
+        #             value_lr=1e-3,
+        #             device=None,
+        #             useRNN=True,
+        #             save_path=f"{xp_name}/{model_folder}",
+        #             combinatorial=True,
+        #             history_len=n_agents,
+        #             early_stopping=True
+        #             )
 
-        # ppo = D2DPPO(env, 
-        #         hidden_size=64, 
-        #         gamma=0.4,
-        #         policy_lr=3e-4,
-        #         value_lr=1e-3,
-        #         beta_entropy=0.01,
-        #         device=None,
-        #         useRNN=True,
-        #         save_path=f"{xp_name}/{model_folder}",
-        #         combinatorial=True,
-        #         history_len=n_agegnts,
-        #         early_stopping=True
-        #         )
+        ppo = D2DPPO(env, 
+                hidden_size=64, 
+                gamma=0.4,
+                policy_lr=3e-4,
+                value_lr=1e-3,
+                beta_entropy=0.01,
+                device=None,
+                useRNN=True,
+                save_path=f"{xp_name}/{model_folder}",
+                combinatorial=True,
+                history_len=n_agents,
+                early_stopping=True
+                )
 
         
         res = ppo.train(num_iter=2000, n_epoch=5, num_episodes=10, test_freq=100)    

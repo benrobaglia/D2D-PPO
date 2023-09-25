@@ -15,6 +15,7 @@ class CombinatorialEnv:
                 traffic_model='aperiodic',
                 periodic_devices=[],
                 reward_type=0,
+                collision_type="pessimistic",
                 channel_switch=None,
                 verbose=False): 
         
@@ -28,13 +29,14 @@ class CombinatorialEnv:
         self.offsets = offsets
         self.episode_length = episode_length
         self.traffic_model = traffic_model
+        self.collision_type = collision_type
         self.reward_type = reward_type
         self.periodic_devices = periodic_devices
         self.aperiodic_devices = [i for i in range(self.n_agents) if i not in periodic_devices]
 
         # Channel
         if channel_switch is None:
-            self.channel_switch = np.zeros(self.n_agents)
+            self.channel_switch = np.zeros((self.n_agents, self.n_channels))
         else:
             self.channel_switch = channel_switch
 
@@ -45,7 +47,7 @@ class CombinatorialEnv:
         self.action_space = spaces.Tuple([spaces.MultiBinary(self.n_channels) for _ in range(self.n_agents)])
 
         self.state_space = spaces.Box(low=-float('inf'), high=float('inf'),
-                                                        shape=(self.deadlines.sum() + self.n_channels,))
+                                                        shape=(self.deadlines.sum() + self.n_channels*self.n_agents,))
 
 
     def reset(self):
@@ -75,7 +77,7 @@ class CombinatorialEnv:
             raise ValueError('traffic model not supported')
 
         # Set channel
-        self.channel_state = np.ones(self.n_channels)
+        self.channel_state = np.ones((self.n_agents, self.n_channels))
 
         self.timestep = 0
         self.discarded_packets = np.zeros(self.n_agents)
@@ -92,21 +94,17 @@ class CombinatorialEnv:
         obs = []
         for k in range(self.n_agents):
             buffer_obs = self.current_buffers[k, :self.deadlines[k]] # All values > deadline are 0 and do not provide info.
-            channel_obs = np.zeros(self.n_channels)
+            channel_obs = np.ones(self.n_channels)
             obs.append(np.concatenate([buffer_obs, channel_obs]))
         all_buffers = np.concatenate([self.current_buffers[i, :self.deadlines[i]] for i in range(self.n_agents)])
-        state = [all_buffers, self.channel_state]
+        all_channels = self.channel_state.reshape(-1)
+        state = [all_buffers, all_channels]
 
         return obs, state
-
-    def decode_signal(self, attempts_idx):
-        decoded_result = np.random.binomial(1, self.channel_state[attempts_idx])
-        return decoded_result
     
     def evolve_channel(self):
-        change_idx = np.array([np.random.binomial(1, self.channel_switch[k]) for k in range(self.n_channels)])
-        change_idx = change_idx.nonzero()[0]
-        self.channel_state[change_idx] = 1 - self.channel_state[change_idx]
+        change = np.random.binomial(1, self.channel_switch)
+        self.channel_state = np.abs(self.channel_state - change)
 
     def evolve_buffer(self, buffer):
         new_buffer = buffer[:, 1:]
@@ -126,31 +124,43 @@ class CombinatorialEnv:
         has_a_packet = (self.current_buffers.sum(1) > 0) * 1.
         has_a_packet_mat = np.stack([has_a_packet for _ in range(actions.shape[1])]).T
         attempts = actions * has_a_packet_mat
+        attempts_good_channels = attempts * self.channel_state
+        
+        # Get all the channels that have been selected by all users
+        selected_channels = (attempts.sum(0) > 0) * 1
+        selected_channels = np.tile(selected_channels, (self.n_agents, 1))
 
-        attempts_per_channel = attempts.sum(0)
-        active_channels = attempts_per_channel > 0
+        # Get the number of users that selected the channels
+        n_users_per_channel = attempts.sum(0)
+        n_users_per_channel = np.tile(n_users_per_channel, (self.n_agents, 1))
 
-        acknack = np.zeros(self.n_channels)
-        # Setting the bad channel choices to -1. Note: good channels are set to 1.
-        acknack[active_channels] = 2 * self.channel_state[active_channels] - 1        
+        # Compute acknack: -1 for a bad channel, 1 if a good channel selected by 1 user, 1 / number of attempts for channels selected by m users.
+        # acknack gives information about the channel quality (for all selected channels) and how many users selected the channel. 
+        # acknack[i,j] = 1/m > 0 tells that channel j of agent i is good and has been selected m times
+        acknack = np.zeros_like(self.channel_state, dtype=float)
+        mask = n_users_per_channel != 0
+        # print(acknack)
+        # print(mask)
+        # print(self.channel_state)
+        # print(selected_channels)
+        # print(n_users_per_channel)
+        acknack[mask] = self.channel_state[mask] * selected_channels[mask] - 1 + self.channel_state[mask] / n_users_per_channel[mask]
         
-        self.selected_channel_qualities += (acknack > 0).sum()
-        self.number_selected_channel += (acknack != 0).sum()
-        
-        good_active_channels = self.channel_state * active_channels
-        good_active_channels_idx = good_active_channels.nonzero()[0]
+        if self.collision_type == "pessimistic":
+            # A collision occurs in channel n even if user A and B access n where n is good for A and bad for B.
+            successful_attempts = ((acknack*attempts) == 1).sum(1)
+            successful_users = (successful_attempts > 0).nonzero()[0]
+        elif self.collision_type == "optimistic":
+            # A collision occurs only if n is good for A and good for B.
+            successful_channels = (attempts_good_channels == 1).sum(0) # channels where only one  good user has transmitted.
+            successful_users = attempts_good_channels[:, np.where(successful_channels == 1)[0]].nonzero()[0]
+            successful_users = np.unique(successful_users)
 
-        # Setting the good channel chosen to 1 / number of attempts
-        acknack[good_active_channels_idx] = 1/ attempts_per_channel[good_active_channels_idx]                            
-        
-        # Get successful users
-        successful_users = np.unique(attempts[:, np.where(attempts_per_channel==1)[0]].nonzero()[0])
-        
         # Executing the action and increment the buffers
         for u in successful_users:
             self.successful_transmissions += 1
             self.last_time_transmitted[u] = 1.
-
+    
             # Remove the decoded packet in the buffers
             col = next_buffers[u].nonzero()[0]
             next_buffers[u, col.min()] -= 1
@@ -185,24 +195,27 @@ class CombinatorialEnv:
         obs = []
         for k in range(self.n_agents):
             buffer_obs = next_buffers[k, :self.deadlines[k]] # All values > deadline are 0 and do not provide info.
-            channel_obs = acknack.copy()
+            channel_obs = acknack[k].copy()
             obs.append(np.concatenate([buffer_obs, channel_obs]))
         all_buffers = np.concatenate([next_buffers[i, :self.deadlines[i]] for i in range(self.n_agents)])
-        state = [all_buffers, self.channel_state]
+        all_channels = self.channel_state.reshape(-1)
+        state = [all_buffers, all_channels]
             
         rewards = np.array([len(successful_users) for _ in range(self.n_agents)])
 
         if self.verbose:
             print(f"Timestep {self.timestep}")
             print(f"Buffers {self.current_buffers}")
-            print(f"Channels {self.channel_state}")
+            print(f"Attempts x good channel: {attempts_good_channels}")
             print(f"Next Observation {obs}")
             print(f"Action {actions}")
+            print(f"Attempts {attempts}")
             print(f"ACK/NACK {acknack}")
-            print(f"Active channels {active_channels}")
-            print(f"Attempts good channel {good_active_channels}")
+            print(f"Selected channels {selected_channels}")
+            print(f"N users per channel {n_users_per_channel}")
             print(f"Successful users: {successful_users}")
             print(f'Next buffers {next_buffers}')
+            print(f"Next Channels {self.channel_state}")
             print(f"Reward {rewards}")
             print(f"Received packets {self.received_packets}")
             print(f"Number of discarded packets {self.discarded_packets.sum()}")
