@@ -28,7 +28,8 @@ print(f"output_path: {output_path}")
 n_seeds = 1
 n_agents = 6
 n_channels = 16
-loads_list = [1/7, 1/3.5, 1/1.75, 1/1.5, 1/1.25, 1]
+# loads_list = [1/7, 1/3.5, 1/1.75, 1/1.5, 1/1.25, 1]
+loads_list = [1]
 episode_length = 200
 channel_switch = np.array([0.8 for _ in range(n_channels)])
 

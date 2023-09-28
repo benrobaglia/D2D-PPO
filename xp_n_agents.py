@@ -13,7 +13,7 @@ random.seed(random_seed)
 np.random.seed(random_seed)
 
 xp_name = 'xp_3gpp_homogeneous'
-output_path = f'{xp_name}/results/mcappo.p'
+output_path = f'{xp_name}/results/ippo.p'
 
 if xp_name not in os.listdir():
     print(f"Creating directories for experiment...")
@@ -51,7 +51,9 @@ for seed in range(n_seeds):
 
     for n_agents in n_agents_list:
         print(f"n_agents= {n_agents}")
-        model_folder = f"models_mcappo_seed_{seed}_k_{n_agents}"
+        # model_folder = f"models_mcappo_seed_{seed}_k_{n_agents}"
+        model_folder = f"models_ippo_seed_{seed}_k_{n_agents}"
+
         if model_folder not in os.listdir(xp_name):
             os.mkdir(f"{xp_name}/{model_folder}")
         
@@ -68,40 +70,45 @@ for seed in range(n_seeds):
                                 n_channels=n_channels,
                                 deadlines=deadlines,
                                 lbdas=lbdas,
+                                period=None,
+                                arrival_probs=None,
+                                offsets=None,
                                 episode_length=200,
                                 traffic_model='aperiodic',
+                                collision_type='pessimistic',
+                                periodic_devices=[],
                                 channel_switch=channel_switch,
                                 verbose=False)
 
-        # ppo = iPPO(env, 
-        #             hidden_size=64, 
-        #             gamma=0.4,
-        #             policy_lr=3e-4,
-        #             value_lr=1e-3,
-        #             device=None,
-        #             useRNN=True,
-        #             save_path=f"{xp_name}/{model_folder}",
-        #             combinatorial=True,
-        #             history_len=n_agents,
-        #             early_stopping=True
-        #             )
+        ppo = iPPO(env, 
+                    hidden_size=64, 
+                    gamma=0.4,
+                    policy_lr=3e-4,
+                    value_lr=1e-3,
+                    device=None,
+                    useRNN=True,
+                    save_path=f"{xp_name}/{model_folder}",
+                    combinatorial=True,
+                    history_len=n_agents,
+                    early_stopping=True
+                    )
 
-        ppo = D2DPPO(env, 
-                hidden_size=64, 
-                gamma=0.4,
-                policy_lr=3e-4,
-                value_lr=1e-3,
-                beta_entropy=0.01,
-                device=None,
-                useRNN=True,
-                save_path=f"{xp_name}/{model_folder}",
-                combinatorial=True,
-                history_len=n_agents,
-                early_stopping=True
-                )
+        # ppo = D2DPPO(env, 
+        #         hidden_size=64, 
+        #         gamma=0.4,
+        #         policy_lr=3e-4,
+        #         value_lr=1e-3,
+        #         beta_entropy=0.01,
+        #         device=None,
+        #         useRNN=True,
+        #         save_path=f"{xp_name}/{model_folder}",
+        #         combinatorial=True,
+        #         history_len=n_agents,
+        #         early_stopping=True
+        #         )
 
         
-        res = ppo.train(num_iter=2000, n_epoch=5, num_episodes=10, test_freq=100)    
+        res = ppo.train(num_iter=2000, n_epoch=5, num_episodes=15, test_freq=100)    
         ppo.load(f"{xp_name}/{model_folder}")
         score_ppo, jains_ppo, channel_error_ppo, rewards_ppo = ppo.test(500)
 

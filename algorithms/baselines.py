@@ -141,12 +141,12 @@ class GFAccess:
         for _ in range(n_episodes):
             rewards_episode = []
             done = False
-            _, (buffer_state, channel_state) = self.env.reset()
+            _, state = self.env.reset()
 
             while not done:
                 # Filter the good/bad channels
                 if self.use_channel:
-                    channel_state = channel_state > 0.5
+                    channel_state = state[1] > 0.5
                     bad_channels = (channel_state == 0)
                     buffer_state[bad_channels] = 0
 
@@ -199,11 +199,11 @@ class CombinatorialRandomAccess:
         for _ in range(n_episodes):
             rewards_episode = []
             done = False
-            _, (buffer_state, channel_state) = self.env.reset()
+            _, state = self.env.reset()
 
             while not done:
 
-                action = self.act(buffer_state)
+                action = self.act(state[0])
                 _, next_state, reward, done, _ = self.env.step(action)
                 buffer_state = next_state[0]
                 rewards_episode.append(reward)
