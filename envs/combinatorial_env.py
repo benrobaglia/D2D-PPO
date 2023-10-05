@@ -16,6 +16,7 @@ class CombinatorialEnv:
                 periodic_devices=[],
                 reward_type=0,
                 collision_type="pessimistic",
+                homogeneous_size=False,
                 channel_switch=None,
                 verbose=False): 
         
@@ -30,6 +31,9 @@ class CombinatorialEnv:
         self.episode_length = episode_length
         self.traffic_model = traffic_model
         self.collision_type = collision_type
+        # iDQN is implemented to handle observations of agents with the same size
+        # Thus if homogeneous_size == True, observations are padded.
+        self.homogeneous_size = homogeneous_size
         self.reward_type = reward_type
         self.periodic_devices = periodic_devices
         self.aperiodic_devices = [i for i in range(self.n_agents) if i not in periodic_devices]
@@ -40,9 +44,13 @@ class CombinatorialEnv:
         else:
             self.channel_switch = channel_switch
 
-        # Observation of device k: buffer of size the deadline + channel state + last feedback
-        self.observation_space = spaces.Tuple([spaces.Box(low=-float('inf'), high=float('inf'),
-                                                           shape=(self.deadlines[k] + 2 * self.n_channels,)) for k in range(self.n_agents)])
+        if not self.homogeneous_size:
+            # Observation of device k: buffer of size the deadline + channel state + last feedback
+            self.observation_space = spaces.Tuple([spaces.Box(low=-float('inf'), high=float('inf'),
+                                                            shape=(self.deadlines[k] + 2 * self.n_channels,)) for k in range(self.n_agents)])
+        else:
+            self.observation_space = spaces.Tuple([spaces.Box(low=-float('inf'), high=float('inf'),
+                                                            shape=(self.deadlines.max() + 2 * self.n_channels,)) for k in range(self.n_agents)])
         # If the first dimension is chosen, no packet is transmitted and the agent remains idle.
         self.action_space = spaces.Tuple([spaces.MultiBinary(self.n_channels) for _ in range(self.n_agents)])
 
@@ -93,7 +101,10 @@ class CombinatorialEnv:
 
         obs = []
         for k in range(self.n_agents):
-            buffer_obs = self.current_buffers[k, :self.deadlines[k]] # All values > deadline are 0 and do not provide info.
+            if not self.homogeneous_size:
+                buffer_obs = self.current_buffers[k, :self.deadlines[k]] # All values > deadline are 0 and do not provide info.
+            else:
+                buffer_obs = self.current_buffers[k]
             channel_obs = np.ones(self.n_channels)
             obs.append(np.concatenate([buffer_obs, channel_obs, channel_obs]))
         all_buffers = np.concatenate([self.current_buffers[i, :self.deadlines[i]] for i in range(self.n_agents)])
@@ -187,7 +198,10 @@ class CombinatorialEnv:
         # Build observations
         obs = []
         for k in range(self.n_agents):
-            buffer_obs = next_buffers[k, :self.deadlines[k]] # All values > deadline are 0 and do not provide info.
+            if not self.homogeneous_size:
+                buffer_obs = next_buffers[k, :self.deadlines[k]] # All values > deadline are 0 and do not provide info.
+            else:
+                buffer_obs = next_buffers[k]
             channel_obs_k = channel_obs[k]
             obs.append(np.concatenate([buffer_obs, channel_obs_k, acknack]))
         all_buffers = np.concatenate([next_buffers[i, :self.deadlines[i]] for i in range(self.n_agents)])

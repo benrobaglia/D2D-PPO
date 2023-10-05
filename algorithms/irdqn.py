@@ -219,12 +219,13 @@ class iRDQN:
                         loss=loss) for _ in range(env.n_agents)]
 
 
-    def train_idqn(self, n_episodes, early_stopping=True):
+    def train(self, n_episodes, early_stopping=True):
         
         received_list = []
         discarded_list = []
         test_list = []
         reward_list = []
+        train_scores = []
 
         for ep in range(n_episodes):
             history = []
@@ -237,17 +238,23 @@ class iRDQN:
     
             while not done:
                 actions = []
+                actions_binary = []
                 history_tensor = torch.stack(history) # dim: (L, n, state_size)
 
                 for i in range(self.env.n_agents):
                     a = self.agents[i]
                     obs = history_tensor[:, i, :]
-                    actions.append(a.act((obs.to(a.device)),
-                                        is_training_ready=is_training_ready))
+                    action = a.act((obs.to(a.device)),
+                                        is_training_ready=is_training_ready)
+                    action_binary = np.zeros(self.env.n_channels)
+                    action_binary[action] = 1
+                    actions.append(action)
+                    actions_binary.append(action_binary)
                     a.update_epsilon(ep)
                 actions = np.array(actions)
+                actions_binary = np.stack(actions_binary)
 
-                state_next, _, rewards, done, _ = self.env.step(actions)
+                state_next, _, rewards, done, _ = self.env.step(actions_binary)
                 score += rewards.sum()
                 
                 state_next = torch.tensor(np.stack(state_next), dtype=torch.float).to(self.device)
@@ -262,13 +269,13 @@ class iRDQN:
 
             received_list.append(self.env.received_packets.sum())
             discarded_list.append(self.env.discarded_packets.sum())
-
+            train_scores.append(1 - self.env.discarded_packets.sum() / self.env.received_packets.sum())
 
             if ep % 100 == 0:
-                ts, tr = self.test(20)
+                ts, tr = self.test(50)
                 test_list.append(ts)
                 reward_list.append(tr)
-                print(f"Episode: {ep}, Running reward: {score}, Test score: {ts}, eps: {self.agents[0].epsilon}")
+                print(f"Episode: {ep}, Running reward: {score}, Test score: {ts}, eps: {self.agents[0].epsilon}, {len(train_scores)}")
                 # Early stopping: 
                 if (early_stopping) & (ts == 1):
                     print(f"Early stopping at episode {ep}")
@@ -292,7 +299,7 @@ class iRDQN:
                         if ep % a.update_target_frequency == 0:
                             a.target_network.load_state_dict(a.network.state_dict())
         
-        return test_list, reward_list
+        return train_scores, test_list, reward_list
 
 
     def test(self, n_episodes, verbose=False):
@@ -315,9 +322,12 @@ class iRDQN:
                 history_tensor = torch.stack(history) # dim: (L, n, state_size)
                 for i,a in enumerate(self.agents):
                     obs = history_tensor[:, i, :]
-                    actions.append(a.predict(obs.to(self.device)))
+                    action_idx = a.predict(obs.to(self.device))
+                    action_agent = np.zeros(self.env.n_channels)
+                    action_agent[action_idx] = 1
+                    actions.append(action_agent)
                     
-                state_next, _, reward, done, _ = self.env.step(np.array(actions))
+                state_next, _, reward, done, _ = self.env.step(np.stack(actions))
                 state_next = torch.tensor(np.stack(state_next), dtype=torch.float).to(self.device)       
 
                 # Update history

@@ -4,21 +4,37 @@ from envs.combinatorial_env import CombinatorialEnv
 from algorithms.baselines import CombinatorialRandomAccess
 
 n_seeds = 1
-# n_agents_list = [4, 8, 12, 16]
-loads_list = [1/7, 1/3.5, 1/1.75, 1/1.5, 1/1.25, 1]
-
-n_agents = 6
-n_channels = 16
-channel_switch = np.array([0.8 for _ in range(n_channels)])
-episode_length = 200
 
 output_path = 'combinatorial_load/results/aloha_16_channels.p'
+
+# Run channel switch first time
+# channel_switch = np.random.choice([0.2 ,0.4, 0.6, 0.8], size=(n_agents, n_channels))
+# pickle.dump(channel_switch, open("combinatorial_load/channel_switch.p", 'wb'))
+
+# Load channel switch
+channel_switch = pickle.load(open("combinatorial_load/channel_switch.p", 'rb'))
+
+print(f"Channel Switch: {channel_switch}")
+print(f"Channel Switch Mean: {channel_switch.mean()}")
+
+# Create setup
+setup = {"n_agents": 6,
+         "n_channels": 16,
+         "episode_length": 200,
+         "loads_list": [1/3, 1/2, 1/1.5, 1/1.25, 1],
+         "deadlines": np.array([7, 14] * 3),
+         "arrival_probs": np.array([0.2, 0.4, 0.8, 1, 1, 1]),
+         "offsets": np.zeros(6),
+         "periodic_devices": np.array([0, 1, 2]),
+         "channel_switch": channel_switch
+         }
+
+pickle.dump(setup, open("combinatorial_load/setup.p", 'wb'))
 
 gf_scores_list = []
 gf_jains_list = []
 gf_channel_errors_list = []
 gf_average_rewards_list = []
-
 
 for seed in range(n_seeds):
     print(f"Seed {seed}")
@@ -32,26 +48,24 @@ for seed in range(n_seeds):
     gf_channel_errors_list_seed = []
     gf_average_rewards_list_seed = []
 
-    for l in loads_list:
+    n_agents = setup['n_agents']
+
+    for l in setup['loads_list']:
         print(f"Load={l}")
-        deadlines = np.array([7, 14] * (n_agents//2))
         lbdas = np.array([l] * (n_agents))
-        period = np.array([1/l] * (n_agents))
-        arrival_probs = np.array([0.4, 0.8] * (n_agents//2))
-        offsets = np.zeros(n_agents)
-        periodic_devices = np.array([0, 1])
+        period = np.array([int(1/l)] * (n_agents))
 
         env = CombinatorialEnv(n_agents=n_agents,
-                        n_channels=n_channels,
-                        deadlines=deadlines,
+                        n_channels=setup['n_channels'],
+                        deadlines=setup['deadlines'],
                         lbdas=lbdas,
                         period=period,
-                        arrival_probs=arrival_probs,
-                        offsets=offsets,
-                        episode_length=episode_length,
+                        arrival_probs=setup['arrival_probs'],
+                        offsets=setup['offsets'],
+                        episode_length=setup["episode_length"],
                         traffic_model='heterogeneous',
-                        periodic_devices=periodic_devices,
-                        channel_switch=channel_switch,
+                        periodic_devices=setup['periodic_devices'],
+                        channel_switch=setup['channel_switch'],
                         verbose=False)
         
         gf = CombinatorialRandomAccess(env)

@@ -4,6 +4,8 @@ import pickle
 from envs.combinatorial_env import CombinatorialEnv
 from algorithms.d2d_ppo import D2DPPO
 from algorithms.ippo import iPPO
+from algorithms.irdqn import iRDQN
+from algorithms.baselines import CombinatorialRandomAccess
 import os
 import random
 
@@ -13,7 +15,7 @@ random.seed(random_seed)
 np.random.seed(random_seed)
 
 xp_name = 'xp_3gpp_homogeneous'
-output_path = f'{xp_name}/results/ippo.p'
+output_path = f'{xp_name}/results/aloha.p'
 
 if xp_name not in os.listdir():
     print(f"Creating directories for experiment...")
@@ -52,7 +54,7 @@ for seed in range(n_seeds):
     for n_agents in n_agents_list:
         print(f"n_agents= {n_agents}")
         # model_folder = f"models_mcappo_seed_{seed}_k_{n_agents}"
-        model_folder = f"models_ippo_seed_{seed}_k_{n_agents}"
+        model_folder = f"models_mcappo_seed_{seed}_k_{n_agents}"
 
         if model_folder not in os.listdir(xp_name):
             os.mkdir(f"{xp_name}/{model_folder}")
@@ -80,18 +82,18 @@ for seed in range(n_seeds):
                                 channel_switch=channel_switch,
                                 verbose=False)
 
-        ppo = iPPO(env, 
-                    hidden_size=64, 
-                    gamma=0.4,
-                    policy_lr=3e-4,
-                    value_lr=1e-3,
-                    device=None,
-                    useRNN=True,
-                    save_path=f"{xp_name}/{model_folder}",
-                    combinatorial=True,
-                    history_len=n_agents,
-                    early_stopping=True
-                    )
+        # ppo = iPPO(env, 
+        #             hidden_size=64, 
+        #             gamma=0.4,
+        #             policy_lr=3e-4,
+        #             value_lr=1e-3,
+        #             device=None,
+        #             useRNN=True,
+        #             save_path=f"{xp_name}/{model_folder}",
+        #             combinatorial=True,
+        #             history_len=n_agents,
+        #             early_stopping=True
+        #             )
 
         # ppo = D2DPPO(env, 
         #         hidden_size=64, 
@@ -107,24 +109,49 @@ for seed in range(n_seeds):
         #         early_stopping=True
         #         )
 
-        
-        res = ppo.train(num_iter=2000, n_epoch=5, num_episodes=15, test_freq=100)    
-        ppo.load(f"{xp_name}/{model_folder}")
-        score_ppo, jains_ppo, channel_error_ppo, rewards_ppo = ppo.test(500)
+        # res = ppo.train(num_iter=2000, n_epoch=5, num_episodes=15, test_freq=100)    
+        # ppo.load(f"{xp_name}/{model_folder}")
+        # score_ppo, jains_ppo, channel_error_ppo, rewards_ppo = ppo.test(500)
+
+        # idqn = iRDQN(
+        #         env,
+        #         history_len = n_agents,
+        #         replay_start_size=100,
+        #         replay_buffer_size=100000,
+        #         gamma=0.4,
+        #         update_target_frequency=100,
+        #         minibatch_size=64,
+        #         learning_rate=1e-4,
+        #         update_frequency=1,
+        #         initial_exploration_rate=1,
+        #         final_exploration_rate=0.1,
+        #         adam_epsilon=1e-8,
+        #         loss='huber'
+        #     )
+
+        # res = idqn.train(10000)
+        # score_ppo, jains_ppo = idqn.test(500)
+        # channel_error_ppo = ""
+        # rewards_ppo = ""
+
+        gf = CombinatorialRandomAccess(env)
+        cv = gf.get_best_transmission_probs(50)
+        gf.transmission_prob = gf.transmission_prob_list[np.argmax(cv)]
+        score_ppo, jains_ppo, channel_error_ppo, rewards_ppo = gf.run(500)
 
         print(f"URLLC score ppo: {score_ppo}")
         print(f"Jain's index ppo: {jains_ppo}")
         print(f"Channel errors ppo: {channel_error_ppo}")
         print(f"Reward per episode ppo: {rewards_ppo}\n")
 
-        training_list_seed.append(res)
-        training_list.append(training_list_seed)
+        # training_list_seed.append(res)
 
         ppo_scores_list_seed.append(score_ppo)
         ppo_jains_list_seed.append(jains_ppo)
         ppo_channel_errors_list_seed.append(channel_error_ppo)
         ppo_average_rewards_list_seed.append(rewards_ppo)
-    
+
+    # training_list.append(training_list_seed)
     ppo_scores_list.append(np.array(ppo_scores_list_seed))
     ppo_jains_list.append(np.array(ppo_jains_list_seed))
     ppo_channel_errors_list.append(np.array(ppo_channel_errors_list_seed))
