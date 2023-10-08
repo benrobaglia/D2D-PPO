@@ -14,7 +14,7 @@ random.seed(random_seed)
 np.random.seed(random_seed)
 
 xp_name = 'combinatorial_load'
-output_path = f'{xp_name}/results/idrqn_16_channels.p'
+output_path = f'{xp_name}/results/mcappo_8_channels.p'
 
 if xp_name not in os.listdir():
     print(f"Creating directories for experiment...")
@@ -28,7 +28,7 @@ print(f"Launching {xp_name} experiment...")
 print(f"output_path: {output_path}")
 
 n_seeds = 1
-setup = pickle.load(open("combinatorial_load/setup.p", "rb"))
+setup = pickle.load(open("combinatorial_load/setup_8_channels.p", "rb"))
 
 print(setup)
 
@@ -53,7 +53,7 @@ for seed in range(n_seeds):
     for load in setup['loads_list']:
         print(f"load= {load}")
         # Managing directories for models
-        model_folder = f"models_ippo{setup['n_channels']}_seed_{seed}_load_{load}"
+        model_folder = f"models_mcappo{setup['n_channels']}_seed_{seed}_load_{load}"
         if model_folder not in os.listdir(xp_name):
             os.mkdir(f"{xp_name}/{model_folder}")
 
@@ -61,7 +61,7 @@ for seed in range(n_seeds):
         period = np.array([int(1/load)] * (n_agents))
 
         env = CombinatorialEnv(n_agents=n_agents,
-                        n_channels=setup['n_channels'],
+                        n_channels=8,
                         deadlines=setup['deadlines'],
                         lbdas=lbdas,
                         period=period,
@@ -75,18 +75,18 @@ for seed in range(n_seeds):
                         verbose=False)
         
         # MCAPPO
-        # ppo = D2DPPO(env, 
-        #                 hidden_size=64, 
-        #                 gamma=0.6,
-        #                 policy_lr=3e-4,
-        #                 value_lr=1e-3,
-        #                 device=None,
-        #                 useRNN=True,
-        #                 save_path=f"{xp_name}/{model_folder}",
-        #                 combinatorial=True,
-        #                 history_len=n_agents,
-        #                 early_stopping=True
-        #                 )
+        ppo = D2DPPO(env, 
+                        hidden_size=64, 
+                        gamma=0.6,
+                        policy_lr=3e-4,
+                        value_lr=1e-3,
+                        device=None,
+                        useRNN=True,
+                        save_path=f"{xp_name}/{model_folder}",
+                        combinatorial=True,
+                        history_len=n_agents,
+                        early_stopping=True
+                        )
         
 
         # MCA-iPPO
@@ -103,32 +103,32 @@ for seed in range(n_seeds):
         #             early_stopping=True
         #             )
         
-        # res = ppo.train(num_iter=2000, n_epoch=5, num_episodes=10, test_freq=100)    
-        # ppo.load(f"{xp_name}/{model_folder}")
-        # score_ppo, jains_ppo, channel_error_ppo, rewards_ppo = ppo.test(1000)
+        res = ppo.train(num_iter=2000, n_epoch=5, num_episodes=10, test_freq=100)    
+        ppo.load(f"{xp_name}/{model_folder}")
+        score_ppo, jains_ppo, channel_error_ppo, rewards_ppo = ppo.test(1000)
 
 
         #iDRQN 
-        idqn = iRDQN(
-                    env,
-                    history_len = n_agents,
-                    replay_start_size=100,
-                    replay_buffer_size=100000,
-                    gamma=0.4,
-                    update_target_frequency=100,
-                    minibatch_size=64,
-                    learning_rate=1e-4,
-                    update_frequency=1,
-                    initial_exploration_rate=1,
-                    final_exploration_rate=0.1,
-                    adam_epsilon=1e-8,
-                    loss='huber'
-                )
+        # idqn = iRDQN(
+        #             env,
+        #             history_len = n_agents,
+        #             replay_start_size=100,
+        #             replay_buffer_size=100000,
+        #             gamma=0.4,
+        #             update_target_frequency=100,
+        #             minibatch_size=64,
+        #             learning_rate=1e-4,
+        #             update_frequency=1,
+        #             initial_exploration_rate=1,
+        #             final_exploration_rate=0.1,
+        #             adam_epsilon=1e-8,
+        #             loss='huber'
+        #         )
 
-        res = idqn.train(20000)
-        score_ppo, jains_ppo = idqn.test(500)
-        channel_error_ppo = ""
-        rewards_ppo = ""
+        # res = idqn.train(20000)
+        # score_ppo, jains_ppo = idqn.test(500)
+        # channel_error_ppo = ""
+        # rewards_ppo = ""
 
 
         print(f"URLLC score ppo: {score_ppo}")
